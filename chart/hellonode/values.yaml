@@ -1,0 +1,2 @@
+image: "eu.gcr.io/bloomon-dev/hellonode:latest"
+imagePullPolicy: Always
