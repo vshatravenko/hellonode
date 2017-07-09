@@ -1,2 +1,3 @@
 image: "eu.gcr.io/bloomon-dev/hellonode:latest"
 imagePullPolicy: Always
+hostname: "hello.bloomon.io"

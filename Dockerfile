@@ -1,4 +1,4 @@
-FROM node:8.0
+FROM node:8.0-alpine
 
 COPY server.js .
 

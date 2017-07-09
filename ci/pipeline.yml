@@ -1,23 +1,90 @@
-resources:
-- name: hellonode-repository
-  type: git
-  source:
-    uri: https://github.com/helios-technologies/hellonode.git
-    branch: master
+resource_types:
+  - name: pull-request
+    type: docker-image
+    source:
+      repository: jtarchie/pr
 
-- name: hellonode-image
-  type: docker-image
-  source:
-    repository: eu.gcr.io/bloomon-dev/hellonode
-    username: _json_key
-    password: {{gcr_password}}
+resources:
+  - name: hellonode-repository
+    type: git
+    source:
+      uri: https://github.com/bloomon/hellonode.git
+      branch: master
+
+  - name: hellonode-image
+    type: docker-image
+    source:
+      repository: eu.gcr.io/bloomon-dev/hellonode
+      username: _json_key
+      password: {{gcr_password}}
+
+  - name: git-pull-requests
+    type: pull-request
+    source:
+      repo: bloomon/hellonode
+      access_token: {{github_token}}
+      private_key: {{github_private_key}}
+      base: master
 
 jobs:
-- name: hellonode
-  serial: true
-  plan:
-  - get: hellonode-repository
-    trigger: true
-  - put: hellonode-image
-    params:
-      build: hellonode-repository
+  - name: docker
+    plan:
+    - get: hellonode-repository
+      trigger: true
+    - put: hellonode-image
+      params:
+        build: hellonode-repository
+
+  - name: pr-docker
+    plan:
+    - get: git-pull-requests
+      trigger: true
+    - task: tag
+      config:
+        image_resource:
+          type: docker-image
+          source:
+            repository: alpine
+        platform: linux
+        outputs:
+          - name: tag
+        run:
+          path: sh
+          args: ['-c', 'echo test > tag/name']
+    - put: hellonode-image
+      params:
+        build: git-pull-requests
+        tag: tag/name
+
+  - name: pr-tests
+    plan:
+      - get: git-pull-requests
+        trigger: true
+        passed:
+          - pr-docker
+      - task: npm-test
+        privileged: true
+        config:
+          image_resource:
+            type: docker-image
+            source:
+              repository: eu.gcr.io/bloomon-dev/hellonode
+              username: _json_key
+              password: {{gcr_password}}
+              tag: test
+          inputs:
+            - name: git-pull-requests
+          platform: linux
+          run:
+            path: sh
+            args: ['-c', 'cd git-pull-requests && npm install mocha --silent && npm test']
+        on_success:
+          put: git-pull-requests
+          params:
+            path: git-pull-requests
+            status: success
+        on_failure:
+          put: git-pull-requests
+          params:
+            path: git-pull-requests
+            status: failure
