@@ -49,3 +49,22 @@ List all resources and curl your service
 kubectl get all
 curl $(minikube service hello-node --url)
 ```
+
+## GitHub pull requests config
+
+1. Add your api key to `ci/credentials.yml`:
+```
+github_token: '00000000your000api000token00000000000000000000000'
+```
+2. Generate ssh keys pair
+3. Add github private key
+```
+github_private_key: |
+  -----BEGIN RSA PRIVATE KEY-----
+  0000000000000000000000000000000000000000000000000000000000000000
+  000000private00000000key0000000000000000000000000000000000000000
+  00000000000000000000000000000000000000000000000000000000
+  -----END RSA PRIVATE KEY-----
+```
+4. Add your public key to github
+
