@@ -1,90 +1,154 @@
 resource_types:
+  - name: kubernetes
+    type: docker-image
+    source:
+      repository: dkkoval/concourse-kubernetes-resource
+
   - name: pull-request
     type: docker-image
     source:
       repository: jtarchie/pr
 
 resources:
-  - name: hellonode-repository
+  - name: repo
     type: git
     source:
-      uri: https://github.com/bloomon/hellonode.git
       branch: master
+      uri: {{github_repo_url}}
 
-  - name: hellonode-image
+  - name: build-image
     type: docker-image
     source:
-      repository: eu.gcr.io/bloomon-dev/hellonode
-      username: _json_key
       password: {{gcr_password}}
+      repository: {{gcr_repo}}
+      username: _json_key
 
-  - name: git-pull-requests
+  - name: pull-requests
     type: pull-request
     source:
-      repo: bloomon/hellonode
       access_token: {{github_token}}
-      private_key: {{github_private_key}}
       base: master
+      private_key: {{github_private_key}}
+      repo: {{github_repo}}
+
+  - name: k8s
+    type: kubernetes
+    source:
+      admin_cert: {{kubelet_cert}}
+      admin_key: {{kubelet_key}}
+      cluster_ca: {{ca_cert}}
+      cluster_url: {{kubernetes_host}}
+      container: test-hellonode
+      namespace: default
+      resource_name: test-hellonode
+      resource_type: deployment
 
 jobs:
-  - name: docker
+  - name: build-pull-request
     plan:
-    - get: hellonode-repository
-      trigger: true
-    - put: hellonode-image
-      params:
-        build: hellonode-repository
+      - get: pull-requests
+        trigger: true
+      - task: tag
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: alpine
+          run:
+            path: sh
+            args: ['-c', 'echo test > tag/name']
+          outputs:
+            - name: tag
+      - put: build-image
+        params:
+          build: pull-requests
+          tag: tag/name
 
-  - name: pr-docker
+  - name: build-master
     plan:
-    - get: git-pull-requests
+      - get: repo
+        trigger: true
+      - put: build-image
+        params:
+          build: repo
+
+  - name: test-master
+    plan:
+    - get: repo
+      passed:
+        - build-master
       trigger: true
-    - task: tag
+    - task: run-tests
+      privileged: true
       config:
+        platform: linux
+        image_resource:
+          type: docker-image
+          source:
+            password: {{gcr_password}}
+            repository: {{gcr_repo}}
+            tag: test
+            username: _json_key
+        run:
+          path: sh
+          args: ['-c', 'cd repo && npm install mocha --silent && npm test']
+        inputs:
+          - name: repo
+
+  - name: test-pull-request
+    plan:
+    - get: pull-requests
+      passed:
+      - build-pull-request
+      trigger: true
+    - task: run-tests
+      privileged: true
+      config:
+        platform: linux
+        image_resource:
+          type: docker-image
+          source:
+            password: {{gcr_password}}
+            repository: {{gcr_repo}}
+            tag: test
+            username: _json_key
+        run:
+          path: sh
+          args: ['-c', 'cd pull-requests && npm install mocha --silent && npm test']
+        inputs:
+          - name: pull-requests
+      on_failure:
+        put: pull-requests
+        params:
+          path: pull-requests
+          status: failure
+      on_success:
+        put: pull-requests
+        params:
+          path: pull-requests
+          status: success
+
+  - name: deploy-master
+    file: ci/jobs/deploy-master.yml
+    plan:
+    - get: repo
+      passed:
+      - test-master
+      trigger: true
+    - task: docker-image
+      config:
+        platform: linux
         image_resource:
           type: docker-image
           source:
             repository: alpine
-        platform: linux
-        outputs:
-          - name: tag
         run:
           path: sh
-          args: ['-c', 'echo test > tag/name']
-    - put: hellonode-image
+          args: ['-c', 'echo eu.gcr.io/bloomon-dev/hellonode > docker-image/image && echo latest > docker-image/tag']
+        outputs:
+        - name: docker-image
+    - put: k8s
       params:
-        build: git-pull-requests
-        tag: tag/name
-
-  - name: pr-tests
-    plan:
-      - get: git-pull-requests
-        trigger: true
-        passed:
-          - pr-docker
-      - task: npm-test
-        privileged: true
-        config:
-          image_resource:
-            type: docker-image
-            source:
-              repository: eu.gcr.io/bloomon-dev/hellonode
-              username: _json_key
-              password: {{gcr_password}}
-              tag: test
-          inputs:
-            - name: git-pull-requests
-          platform: linux
-          run:
-            path: sh
-            args: ['-c', 'cd git-pull-requests && npm install mocha --silent && npm test']
-        on_success:
-          put: git-pull-requests
-          params:
-            path: git-pull-requests
-            status: success
-        on_failure:
-          put: git-pull-requests
-          params:
-            path: git-pull-requests
-            status: failure
+        image_name: docker-image/image
+        image_tag: docker-image/tag
