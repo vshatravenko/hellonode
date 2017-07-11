@@ -19,6 +19,7 @@ You should have some secrets to make the pipeline work (we don't wont this secre
 This command will automatically add kubernetes secrets to `credentials.yml`.
 
 ```console
+export secrets=(kubelet_key kubelet_cert ca_cert)
 for secret in $secrets;
 do;
   gcloud compute --project "bloomon-dev" ssh                               \
