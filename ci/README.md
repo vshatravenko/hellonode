@@ -12,7 +12,7 @@ fly --target bloomon login --team-name main \
 
 ## Getting credentials
 
-You should have some secrets to make the pipeline work (we don't wont this secrets to be public). Check `credentials-example.yml` for more info. Don't forget to add `github_repo_url`, `github_repo` and `gcr_repo`.
+You should have some secrets to make the pipeline work (we don't want this secrets to be public). Check `credentials-example.yml` for more info. Don't forget to add `github_repo_url`, `github_repo` and `gcr_repo`.
 
 ### k8s credentials
 
